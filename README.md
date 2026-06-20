@@ -2,7 +2,7 @@
 
 API de gerenciamento de eventos financeiros construída com FastAPI, PostgreSQL e Arquitetura Hexagonal.
 
-> Este guia é construído em partes — cada parte termina com um commit. Ao final você tem um histórico limpo e rastreável, exatamente como se faz no mercado.
+> Este guia é construído em partes — cada parte começa criando uma branch, termina com um commit, push e merge na `develop`. Ao final você tem um histórico limpo e rastreável, exatamente como se faz no mercado.
 
 ---
 
@@ -25,25 +25,44 @@ API de gerenciamento de eventos financeiros construída com FastAPI, PostgreSQL 
 
 ---
 
-## Parte 1 — Estrutura base
+## Configuração inicial do repositório
 
-### 1.1 Criar a branch
+Após criar o repositório no GitHub com licença e descrição, clone e configure as branches base:
 
 ```bash
-git checkout -b chore/estrutura-base
+# Clone o repositório
+git clone https://github.com/seu-usuario/events-api.git
+cd events-api
+
+# Crie a branch develop a partir da main
+git checkout -b develop
+git push -u origin develop
 ```
 
-| Prefixo | Finalidade / Quando usar | Exemplo de Branch | Comando de Criação (Git Moderno) |
-| :--- | :--- | :--- | :--- |
-| **`feature/`** | Novas funcionalidades, telas ou módulos. | `feature/tela-login` | `git checkout -b feature/tela-login` |
-| **`bugfix/`** | Correção de bugs em desenvolvimento/testes. | `bugfix/erro-frete` | `git checkout -b bugfix/erro-frete` |
-| **`hotfix/`** | Correção crítica e urgente diretamente em produção. | `hotfix/falha-api` | `git checkout -b hotfix/falha-api` |
-| **`chore/`** | Tarefas rotineiras, atualizações ou configurações. | `chore/update-react` | `git checkout -b chore/update-react` |
-| **`refactor/`** | Melhorias na estrutura do código (sem alterar comportamento). | `refactor/busca` | `git checkout -b refactor/busca` |
-| **`docs/`** | Documentação do projeto (ex: `README.md`). | `docs/setup-projeto` | `git checkout -b docs/setup-projeto` |
-| **`test/`** | Escrita ou modificação de testes. | `test/validacao-cpf` | `git checkout -b test/validacao-cpf` |
+> **Por que develop?** É o padrão do mercado para projetos com múltiplos desenvolvedores.
+> `main` recebe apenas código estável e revisado. `develop` é onde as features se acumulam antes de ir para produção.
+> Cada parte deste tutorial cria uma branch a partir da `develop`, faz o trabalho e volta para ela via merge.
 
-### 1.2 Criar a estrutura de pastas
+O fluxo de cada parte será sempre:
+
+```
+develop
+   └── feature/parte-X-descricao   ← você trabalha aqui
+         └── merge de volta para develop
+```
+
+---
+
+## Parte 1 — Estrutura base do projeto
+
+### Início: criar a branch
+
+```bash
+git checkout develop
+git checkout -b feature/parte-1-estrutura-base
+```
+
+### 1.1 Criar a estrutura de pastas
 
 ```bash
 # Pacotes da aplicação
@@ -121,19 +140,45 @@ events-api/
 └── .devcontainer/
 ```
 
-### 1.3 Commit
+### 1.2 Criar `.gitignore`
+
+```
+.env
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+htmlcov/
+.coverage
+```
+
+### Fim: commit, push e merge
 
 ```bash
 git add .
 git commit -m "chore: estrutura base do projeto"
-git push origin chore/estrutura-base
+git push -u origin feature/parte-1-estrutura-base
+
+# Merge na develop
+git checkout develop
+git merge feature/parte-1-estrutura-base
+git push origin develop
 ```
 
 ---
 
 ## Parte 2 — DevContainer e Docker
 
+### Início: criar a branch
+
+```bash
+git checkout develop
+git checkout -b feature/parte-2-devcontainer
+```
+
 ### 2.1 `.devcontainer/devcontainer.json`
+
+> **O que é:** arquivo que diz ao VS Code como montar o ambiente de desenvolvimento dentro do container. Define extensões instaladas automaticamente, configurações do editor, portas expostas e o comando executado ao criar o container.
 
 ```json
 {
@@ -172,9 +217,22 @@ git push origin chore/estrutura-base
 }
 ```
 
-> `postCreateCommand` instala as dependências automaticamente ao criar o container. As migrations são aplicadas separadamente na Parte 7 para que você veja cada etapa.
+Campos principais:
+
+| Campo | O que faz |
+|-------|-----------|
+| `dockerComposeFile` | Qual arquivo Docker Compose usar para subir os serviços |
+| `service` | Qual serviço do Compose é o container principal do VS Code |
+| `extensions` | Extensões instaladas automaticamente para todos no time |
+| `postCreateCommand` | Comando executado uma vez ao criar o container — instala as dependências |
+| `forwardPorts` | Portas do container expostas na sua máquina: 8000 (API) e 5432 (banco) |
+| `remoteEnv` | Variáveis de ambiente disponíveis dentro do container |
+
+> As migrations são aplicadas separadamente na Parte 9 para que você veja cada etapa.
 
 ### 2.2 `.devcontainer/docker-compose.yml`
+
+> **O que é:** define os serviços que sobem junto com o DevContainer. Aqui temos dois: `app` (onde o VS Code abre) e `db` (PostgreSQL). O `app` só inicia depois que o banco estiver pronto — garantido pelo `healthcheck`.
 
 ```yaml
 version: '3.8'
@@ -189,7 +247,7 @@ services:
     command: sleep infinity
     depends_on:
       db:
-        condition: service_healthy   # aguarda o banco estar pronto
+        condition: service_healthy
     networks:
       - events-network
 
@@ -219,13 +277,25 @@ networks:
     driver: bridge
 ```
 
+Pontos importantes:
+
+| Campo | O que faz |
+|-------|-----------|
+| `context: ..` | O Docker busca o `Dockerfile` na raiz do projeto (um nível acima de `.devcontainer/`) |
+| `volumes: ..:/workspace:cached` | Monta a pasta do projeto dentro do container — suas edições aparecem lá instantaneamente |
+| `command: sleep infinity` | Mantém o container `app` rodando sem fazer nada, para o VS Code poder entrar nele |
+| `depends_on: condition: service_healthy` | O container `app` só sobe depois que o banco passar no healthcheck |
+| `postgres_data` | Volume nomeado — os dados do banco persistem entre restarts do container |
+
 ### 2.3 `Dockerfile`
+
+> **O que é:** receita para construir a imagem do container `app`. Parte de uma imagem oficial do Python, instala dependências do sistema, copia o projeto e instala os pacotes Python. Fica na **raiz do projeto**.
 
 ```dockerfile
 FROM python:3.12-slim
 
 RUN apt-get update && apt-get install -y \
-    curl git libpq-dev gcc \
+    curl git libpq-dev gcc postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /workspace
@@ -240,7 +310,11 @@ EXPOSE 8000
 CMD ["uvicorn", "src.events_api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 ```
 
+Por que copiar o `pyproject.toml` antes do resto do código? O Docker cacheia cada instrução em camadas. Se você copiar tudo de uma vez, qualquer alteração no código força a reinstalação de todas as dependências. Separando, o `pip install` só roda novamente quando o `pyproject.toml` mudar.
+
 ### 2.4 `.vscode/settings.json`
+
+> **O que é:** configurações do VS Code específicas do projeto, versionadas no repositório. Garante que todos no time usem as mesmas configurações de testes — independente do que cada um tem no VS Code instalado na máquina.
 
 ```json
 {
@@ -250,7 +324,11 @@ CMD ["uvicorn", "src.events_api.main:app", "--host", "0.0.0.0", "--port", "8000"
 }
 ```
 
+Com isso, o ícone de tubinho de ensaio (⚗️ Testing) na barra lateral do VS Code já mostra todos os testes organizados em árvore, prontos para rodar com um clique.
+
 ### 2.5 `pyproject.toml`
+
+> **O que é:** arquivo central de configuração do projeto Python. Define as dependências, versão do Python, configurações do formatador, do linter e do pytest. Substitui o antigo `setup.py` e vários arquivos de configuração separados.
 
 ```toml
 [build-system]
@@ -304,7 +382,19 @@ pythonpath = ["."]
 disable = ["missing-class-docstring"]
 ```
 
+Seções principais:
+
+| Seção | O que configura |
+|-------|----------------|
+| `[project] dependencies` | Pacotes necessários para rodar a aplicação em produção |
+| `[project.optional-dependencies] dev` | Pacotes extras só para desenvolvimento e testes |
+| `[tool.black]` | Formatador de código — linha máxima de 88 caracteres |
+| `[tool.pytest.ini_options]` | Onde o pytest procura os testes e como o Python encontra o `src/` |
+| `[tool.pylint]` | Desabilita avisos de docstring em classes de teste |
+
 ### 2.6 `.env.example`
+
+> **O que é:** modelo do arquivo de variáveis de ambiente. É commitado no repositório para que todos saibam quais variáveis são necessárias, mas **sem valores reais**. Cada desenvolvedor copia para `.env` (que fica no `.gitignore`) e preenche com seus próprios valores.
 
 ```bash
 DATABASE_URL=postgresql://postgres:postgres@db:5432/events_db
@@ -312,27 +402,58 @@ ENVIRONMENT=development
 DEBUG=false
 ```
 
-### 2.7 Subir o DevContainer e verificar
+### 2.7 Subir o DevContainer
 
-Abra a pasta no VS Code. Quando aparecer a notificação **"Reopen in Container"**, clique. Aguarde o build (1-2 minutos na primeira vez).
+> ⚠️ **Antes de continuar:** certifique-se de que o **Docker Desktop está aberto e rodando**. O ícone na bandeja do sistema deve estar verde. Sem o Docker rodando, o VS Code não consegue construir o container e o DevContainer não vai abrir.
+
+Passos:
+
+1. Abra a pasta do projeto no VS Code (`File → Open Folder`)
+2. O VS Code vai detectar a pasta `.devcontainer/` e exibir uma notificação no canto inferior direito: **"Reopen in Container"** — clique nela
+3. Se a notificação não aparecer: pressione `Ctrl+Shift+P` → digite `Dev Containers: Reopen in Container` → Enter
+4. Aguarde o build — na **primeira vez** leva 2-5 minutos (baixa a imagem Python e instala os pacotes). Nas próximas vezes é muito mais rápido pois usa o cache do Docker
+5. Quando terminar, o terminal do VS Code já estará **dentro do container**
+
+### 2.8 Verificar o ambiente
+
+Com o terminal aberto dentro do container, execute:
 
 ```bash
-# Dentro do container, confirme que o Python enxerga o projeto
+# Python enxerga o projeto?
 python -c "import src.events_api; print('ok')"
+
+# Dependências instaladas?
+pip show fastapi sqlalchemy alembic
+
+# Banco acessível?
+psql $DATABASE_URL -c "SELECT version();"
 ```
 
-### 2.8 Commit
+### Fim: commit, push e merge
 
 ```bash
 git add .
 git commit -m "chore: devcontainer, docker e dependências"
+git push -u origin feature/parte-2-devcontainer
+
+# Merge na develop
+git checkout develop
+git merge feature/parte-2-devcontainer
+git push origin develop
 ```
 
 ---
 
 ## Parte 3 — Domain: exceções
 
-As exceções de domínio traduzem erros de negócio em tipos específicos. Isso permite que a camada HTTP converta cada exceção no status HTTP correto sem conhecer os detalhes da regra de negócio.
+### Início: criar a branch
+
+```bash
+git checkout develop
+git checkout -b feature/parte-3-domain-excecoes
+```
+
+As exceções de domínio traduzem erros de negócio em tipos específicos. Isso permite que a camada HTTP converta cada uma no status HTTP correto sem conhecer os detalhes da regra de negócio.
 
 ### 3.1 `src/events_api/domain/exceptions.py`
 
@@ -360,16 +481,29 @@ class EventAlreadyExistsException(DomainException):
         super().__init__(f"Evento com número {numero_evento} já existe")
 ```
 
-### 3.2 Commit
+### Fim: commit, push e merge
 
 ```bash
 git add .
 git commit -m "feat(domain): exceções de domínio"
+git push -u origin feature/parte-3-domain-excecoes
+
+# Merge na develop
+git checkout develop
+git merge feature/parte-3-domain-excecoes
+git push origin develop
 ```
 
 ---
 
 ## Parte 4 — Domain: entidade Event + testes
+
+### Início: criar a branch
+
+```bash
+git checkout develop
+git checkout -b feature/parte-4-domain-entity
+```
 
 A entidade é o objeto mais importante da aplicação. Ela carrega as regras de negócio e não depende de nada externo — sem banco, sem HTTP. Por isso é a primeira coisa a ser implementada e testada.
 
@@ -640,7 +774,7 @@ class TestToDict:
         assert valid_event.to_dict()["numero_evento"] == 7777
 ```
 
-### 4.4 Verificar e commitar
+### Fim: verificar, commit, push e merge
 
 ```bash
 pytest tests/unit/domain/ -v
@@ -650,11 +784,24 @@ pytest tests/unit/domain/ -v
 ```bash
 git add .
 git commit -m "feat(domain): entidade Event com validações e testes"
+git push -u origin feature/parte-4-domain-entity
+
+# Merge na develop
+git checkout develop
+git merge feature/parte-4-domain-entity
+git push origin develop
 ```
 
 ---
 
 ## Parte 5 — Domain: porta do repositório
+
+### Início: criar a branch
+
+```bash
+git checkout develop
+git checkout -b feature/parte-5-domain-port
+```
 
 A porta é o contrato que qualquer repositório deve seguir. O domínio depende desta interface — não do PostgreSQL diretamente. Isso é o **D** do SOLID (Dependency Inversion).
 
@@ -707,16 +854,29 @@ class EventRepositoryPort(ABC):
         ...
 ```
 
-### 5.2 Commit
+### Fim: commit, push e merge
 
 ```bash
 git add .
 git commit -m "feat(domain): porta EventRepositoryPort"
+git push -u origin feature/parte-5-domain-port
+
+# Merge na develop
+git checkout develop
+git merge feature/parte-5-domain-port
+git push origin develop
 ```
 
 ---
 
 ## Parte 6 — Application: EventService + testes
+
+### Início: criar a branch
+
+```bash
+git checkout develop
+git checkout -b feature/parte-6-application-service
+```
 
 O serviço orquestra os casos de uso. Ele recebe o repositório via injeção de dependência e não sabe se é PostgreSQL ou um mock — só sabe que implementa `EventRepositoryPort`.
 
@@ -1003,7 +1163,7 @@ class TestSearchEvents:
         assert event_service.search_events() == []
 ```
 
-### 6.4 Verificar e commitar
+### Fim: verificar, commit, push e merge
 
 ```bash
 pytest tests/unit/ -v
@@ -1013,13 +1173,24 @@ pytest tests/unit/ -v
 ```bash
 git add .
 git commit -m "feat(application): EventService com casos de uso e testes"
+git push -u origin feature/parte-6-application-service
+
+# Merge na develop
+git checkout develop
+git merge feature/parte-6-application-service
+git push origin develop
 ```
 
 ---
 
 ## Parte 7 — Infrastructure: settings e database
 
-Configurações técnicas que todas as camadas externas precisam — conexão com o banco e leitura de variáveis de ambiente.
+### Início: criar a branch
+
+```bash
+git checkout develop
+git checkout -b feature/parte-7-infrastructure
+```
 
 ### 7.1 `src/events_api/infrastructure/settings.py`
 
@@ -1063,8 +1234,8 @@ engine = create_engine(
     settings.database_url,
     pool_size=5,
     max_overflow=10,
-    pool_pre_ping=True,   # verifica se a conexão está ativa antes de usar
-    echo=settings.debug,  # imprime SQLs no terminal quando debug=True
+    pool_pre_ping=True,
+    echo=settings.debug,
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -1074,7 +1245,7 @@ class Base(DeclarativeBase):
     """Classe base para todos os modelos SQLAlchemy."""
 ```
 
-### 7.3 Verificar e commitar
+### Fim: verificar, commit, push e merge
 
 ```bash
 python -c "from src.events_api.infrastructure.settings import settings; print(settings.environment)"
@@ -1084,11 +1255,24 @@ python -c "from src.events_api.infrastructure.settings import settings; print(se
 ```bash
 git add .
 git commit -m "feat(infrastructure): settings e configuração do banco"
+git push -u origin feature/parte-7-infrastructure
+
+# Merge na develop
+git checkout develop
+git merge feature/parte-7-infrastructure
+git push origin develop
 ```
 
 ---
 
 ## Parte 8 — Adapter outbound: model e repositório PostgreSQL
+
+### Início: criar a branch
+
+```bash
+git checkout develop
+git checkout -b feature/parte-8-adapter-outbound
+```
 
 O adaptador de saída é o único lugar que conhece SQLAlchemy. Se você quiser trocar o banco de dados, só muda este arquivo.
 
@@ -1204,7 +1388,7 @@ class EventRepositoryImpl(EventRepositoryPort):
         return [self._to_entity(m) for m in models]
 ```
 
-### 8.3 Verificar e commitar
+### Fim: verificar, commit, push e merge
 
 ```bash
 # Testes unitários continuam passando sem banco
@@ -1215,11 +1399,24 @@ pytest tests/unit/ -v
 ```bash
 git add .
 git commit -m "feat(adapter): model e repositório PostgreSQL"
+git push -u origin feature/parte-8-adapter-outbound
+
+# Merge na develop
+git checkout develop
+git merge feature/parte-8-adapter-outbound
+git push origin develop
 ```
 
 ---
 
 ## Parte 9 — Migrations com Alembic
+
+### Início: criar a branch
+
+```bash
+git checkout develop
+git checkout -b feature/parte-9-migrations
+```
 
 Alembic é o controle de versão do banco. Em vez de executar SQL manualmente, você cria arquivos de migration que são aplicados automaticamente — inclusive em produção durante o deploy.
 
@@ -1336,14 +1533,12 @@ alembic history        # histórico de migrations
 alembic downgrade -1   # desfaz a última migration (rollback)
 ```
 
-### 9.4 Verificar e commitar
+### Fim: verificar, commit, push e merge
 
 ```bash
-# Tabela criada
 psql $DATABASE_URL -c "\dt"
 # events ✅
 
-# Testes ainda passando
 pytest tests/unit/ -v
 # 34 passed ✅
 ```
@@ -1351,11 +1546,24 @@ pytest tests/unit/ -v
 ```bash
 git add .
 git commit -m "feat(migrations): migration inicial da tabela events"
+git push -u origin feature/parte-9-migrations
+
+# Merge na develop
+git checkout develop
+git merge feature/parte-9-migrations
+git push origin develop
 ```
 
 ---
 
 ## Parte 10 — Adapter inbound: schemas, router e dependencies
+
+### Início: criar a branch
+
+```bash
+git checkout develop
+git checkout -b feature/parte-10-adapter-inbound
+```
 
 O adaptador de entrada recebe requisições HTTP e as converte em chamadas para o `EventService`. É a única camada que conhece FastAPI e status codes HTTP.
 
@@ -1378,7 +1586,7 @@ from src.events_api.infrastructure.database import SessionLocal
 def get_db_session() -> Generator[Session, None, None]:
     """
     Abre uma sessão por request e garante que seja fechada ao final.
-    O FastAPI executa o código até o yield, injeta a sessão no handler,
+    O FastAPI executa até o yield, injeta a sessão no handler,
     e executa o finally após a resposta — mesmo em caso de erro.
     """
     db = SessionLocal()
@@ -1598,25 +1806,36 @@ async def health_check():
     return {"status": "healthy", "environment": settings.environment}
 ```
 
-### 10.5 Verificar e commitar
+### Fim: verificar, commit, push e merge
 
 ```bash
 uvicorn src.events_api.main:app --reload --host 0.0.0.0 --port 8000
 
 curl -s http://localhost:8000/health
 # {"status":"healthy","environment":"development"} ✅
-
-# Swagger disponível em http://localhost:8000/api/v1/docs
 ```
 
 ```bash
 git add .
 git commit -m "feat(adapter): schemas, router HTTP e dependencies"
+git push -u origin feature/parte-10-adapter-inbound
+
+# Merge na develop
+git checkout develop
+git merge feature/parte-10-adapter-inbound
+git push origin develop
 ```
 
 ---
 
 ## Parte 11 — Testes de integração
+
+### Início: criar a branch
+
+```bash
+git checkout develop
+git checkout -b feature/parte-11-integration-tests
+```
 
 Testam os endpoints HTTP de ponta a ponta, mas sem banco de dados real — usando um repositório em memória. Isso é possível graças à arquitetura hexagonal: o `TestClient` recebe o mesmo serviço com um repositório diferente.
 
@@ -1800,7 +2019,7 @@ class TestSearchEventsEndpoint:
         assert test_client.get("/api/v1/events/?numero_evento=9999").json() == []
 ```
 
-### 11.3 Verificar e commitar
+### Fim: verificar, commit, push e merge
 
 ```bash
 pytest tests/ -v
@@ -1813,6 +2032,12 @@ pytest tests/ --cov=src --cov-report=term-missing
 ```bash
 git add .
 git commit -m "test(integration): testes dos endpoints HTTP com repositório em memória"
+git push -u origin feature/parte-11-integration-tests
+
+# Merge na develop
+git checkout develop
+git merge feature/parte-11-integration-tests
+git push origin develop
 ```
 
 ---
@@ -1847,20 +2072,22 @@ Documentação interativa: **http://localhost:8000/api/v1/docs**
 
 ---
 
-## Histórico de commits
+## Histórico de branches e commits
 
 ```
-chore: estrutura base do projeto
-chore: devcontainer, docker e dependências
-feat(domain): exceções de domínio
-feat(domain): entidade Event com validações e testes
-feat(domain): porta EventRepositoryPort
-feat(application): EventService com casos de uso e testes
-feat(infrastructure): settings e configuração do banco
-feat(adapter): model e repositório PostgreSQL
-feat(migrations): migration inicial da tabela events
-feat(adapter): schemas, router HTTP e dependencies
-test(integration): testes dos endpoints HTTP com repositório em memória
+main
+ └── develop
+      ├── feature/parte-1-estrutura-base         → chore: estrutura base do projeto
+      ├── feature/parte-2-devcontainer           → chore: devcontainer, docker e dependências
+      ├── feature/parte-3-domain-excecoes        → feat(domain): exceções de domínio
+      ├── feature/parte-4-domain-entity          → feat(domain): entidade Event com validações e testes
+      ├── feature/parte-5-domain-port            → feat(domain): porta EventRepositoryPort
+      ├── feature/parte-6-application-service    → feat(application): EventService com casos de uso e testes
+      ├── feature/parte-7-infrastructure         → feat(infrastructure): settings e configuração do banco
+      ├── feature/parte-8-adapter-outbound       → feat(adapter): model e repositório PostgreSQL
+      ├── feature/parte-9-migrations             → feat(migrations): migration inicial da tabela events
+      ├── feature/parte-10-adapter-inbound       → feat(adapter): schemas, router HTTP e dependencies
+      └── feature/parte-11-integration-tests     → test(integration): testes dos endpoints HTTP
 ```
 
 ---
