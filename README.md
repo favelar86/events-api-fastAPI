@@ -527,8 +527,8 @@ class Event:
 
     numero_evento: int
     valor: Decimal
-    data_hora_atualizacao: datetime
     id: int | None = field(default=None)
+    data_hora_atualizacao: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def __post_init__(self) -> None:
         """Validações executadas automaticamente ao criar o objeto."""
@@ -574,7 +574,6 @@ class Event:
 
 ```python
 """Fixtures dos testes de domínio."""
-from datetime import datetime, UTC
 from decimal import Decimal
 
 import pytest
@@ -588,7 +587,6 @@ def valid_event() -> Event:
     return Event(
         numero_evento=2400,
         valor=Decimal("10.00"),
-        data_hora_atualizacao=datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
     )
 
 
@@ -599,7 +597,6 @@ def persisted_event() -> Event:
         id=1,
         numero_evento=2400,
         valor=Decimal("10.00"),
-        data_hora_atualizacao=datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
     )
 ```
 
@@ -624,11 +621,17 @@ class TestEventCreation:
         event = Event(
             numero_evento=2400,
             valor=Decimal("10.00"),
-            data_hora_atualizacao=datetime.now(UTC),
         )
         assert event.numero_evento == 2400
         assert event.valor == Decimal("10.00")
         assert event.id is None
+
+    def test_create_event_timestamp_is_set_automatically(self):
+        """Timestamp deve ser gerado automaticamente pela entidade."""
+        before = datetime.now(UTC)
+        event = Event(numero_evento=2400, valor=Decimal("10.00"))
+        after = datetime.now(UTC)
+        assert before <= event.data_hora_atualizacao <= after
 
     def test_create_event_with_id(self, persisted_event):
         """Evento com ID representa um registro já existente no banco."""
@@ -639,7 +642,6 @@ class TestEventCreation:
         event = Event(
             numero_evento=1,
             valor=Decimal("0.00"),
-            data_hora_atualizacao=datetime.now(UTC),
         )
         assert event.valor == Decimal("0.00")
 
@@ -648,7 +650,6 @@ class TestEventCreation:
         event = Event(
             numero_evento=1,
             valor=Decimal("999999.99"),
-            data_hora_atualizacao=datetime.now(UTC),
         )
         assert event.valor == Decimal("999999.99")
 
@@ -659,17 +660,17 @@ class TestEventValidation:
     def test_negative_numero_raises_on_creation(self):
         """Número negativo deve falhar na criação via __post_init__."""
         with pytest.raises(ValueError, match="Número do evento deve ser positivo"):
-            Event(numero_evento=-1, valor=Decimal("10.00"), data_hora_atualizacao=datetime.now(UTC))
+            Event(numero_evento=-1, valor=Decimal("10.00"))
 
     def test_zero_numero_raises_on_creation(self):
         """Número zero não é permitido."""
         with pytest.raises(ValueError, match="Número do evento deve ser positivo"):
-            Event(numero_evento=0, valor=Decimal("10.00"), data_hora_atualizacao=datetime.now(UTC))
+            Event(numero_evento=0, valor=Decimal("10.00"))
 
     def test_negative_valor_raises_on_creation(self):
         """Valor negativo deve falhar na criação."""
         with pytest.raises(ValueError, match="Valor do evento não pode ser negativo"):
-            Event(numero_evento=2400, valor=Decimal("-0.01"), data_hora_atualizacao=datetime.now(UTC))
+            Event(numero_evento=2400, valor=Decimal("-0.01"))
 
 
 class TestUpdateValor:
@@ -884,7 +885,6 @@ O serviço orquestra os casos de uso. Ele recebe o repositório via injeção de
 
 ```python
 """Serviço de Eventos: Casos de Uso da Aplicação."""
-from datetime import datetime, UTC
 from decimal import Decimal
 
 from src.events_api.domain.entities.event import Event
@@ -920,7 +920,6 @@ class EventService:
         event = Event(
             numero_evento=numero_evento,
             valor=valor,
-            data_hora_atualizacao=datetime.now(UTC),
         )
         return self._repository.save(event)
 
@@ -973,7 +972,6 @@ class EventService:
 
 ```python
 """Fixtures dos testes de application."""
-from datetime import datetime, UTC
 from decimal import Decimal
 from unittest.mock import MagicMock
 
@@ -1002,7 +1000,6 @@ def sample_event() -> Event:
         id=1,
         numero_evento=2400,
         valor=Decimal("10.00"),
-        data_hora_atualizacao=datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
     )
 ```
 
@@ -1011,7 +1008,6 @@ def sample_event() -> Event:
 ```python
 """Testes do EventService com Mock Repository."""
 from decimal import Decimal
-from datetime import datetime, UTC
 
 import pytest
 
@@ -1066,7 +1062,6 @@ class TestUpdateEvent:
         updated = Event(
             id=1, numero_evento=2400,
             valor=Decimal("20.00"),
-            data_hora_atualizacao=datetime.now(UTC),
         )
         mock_repository.find_by_id.return_value = sample_event
         mock_repository.update.return_value = updated
@@ -1083,7 +1078,6 @@ class TestUpdateEvent:
         updated = Event(
             id=1, numero_evento=9999,
             valor=Decimal("10.00"),
-            data_hora_atualizacao=datetime.now(UTC),
         )
         mock_repository.find_by_id.return_value = sample_event
         mock_repository.update.return_value = updated
@@ -1329,13 +1323,16 @@ class EventRepositoryImpl(EventRepositoryPort):
 
     @staticmethod
     def _to_entity(model: EventModel) -> Event:
-        """Modelo SQLAlchemy → entidade de domínio."""
-        return Event(
+        """Modelo SQLAlchemy → entidade de domínio.
+        O timestamp vem do banco — sobrescrevemos o gerado automaticamente pela entidade.
+        """
+        event = Event(
             id=model.id,
             numero_evento=model.numero_evento,
             valor=model.valor,
-            data_hora_atualizacao=model.data_hora_atualizacao,
         )
+        event.data_hora_atualizacao = model.data_hora_atualizacao
+        return event
 
     @staticmethod
     def _to_model(entity: Event) -> EventModel:
